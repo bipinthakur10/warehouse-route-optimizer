@@ -1,3 +1,0 @@
-/home/bipin-kumar/C_Programming/DSALAB/build/CMakeFiles/server.dir
-/home/bipin-kumar/C_Programming/DSALAB/build/CMakeFiles/edit_cache.dir
-/home/bipin-kumar/C_Programming/DSALAB/build/CMakeFiles/rebuild_cache.dir
