@@ -1,0 +1,21 @@
+{
+  "configurations": [
+    {
+      "name": "DSALAB C++",
+      "compilerPath": "/usr/bin/c++",
+      "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "/usr/include",
+        "/usr/include/drogon",
+        "/usr/include/jsoncpp"
+      ],
+      "cppStandard": "c++17",
+      "intelliSenseMode": "linux-gcc-x64",
+      "defines": [
+        "HAS_YAML_CPP"
+      ]
+    }
+  ],
+  "version": 4
+}

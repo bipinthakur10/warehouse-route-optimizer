@@ -1,0 +1,9 @@
+# CMake build output
+/build/
+
+# Local runtime data
+/database/*.db
+
+# Editor and operating-system files
+.vscode/ipch/
+.DS_Store

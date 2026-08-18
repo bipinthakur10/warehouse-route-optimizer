@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warehouse Robot Route Optimization</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<header class="page-header">
+    <p class="eyebrow">Pathfinding visualizer</p>
+    <h1>Warehouse Route Optimizer</h1>
+    <p>Set the warehouse dimensions, mark blocked cells, and compare route algorithms.</p>
+</header>
+
+<main>
+<section class="controls" aria-label="Grid controls">
+
+<label>
+Rows:
+<input id="rows" type="number" min="2" max="20" value="10">
+</label>
+
+<label>
+Cols:
+<input id="cols" type="number" min="2" max="20" value="10">
+</label>
+
+
+<select id="algorithm">
+    <option value="BFS">BFS</option>
+    <option value="DFS">DFS</option>
+    <option value="A*">A*</option>
+    <option value="Dijkstra">Dijkstra</option>
+    <option value="Floyd-Warshall">Floyd-Warshall</option>
+    <option value="Kruskal">Kruskal (MST)</option>
+    <option value="Prim">Prim (MST)</option>
+</select>
+
+
+<button id="create-grid" type="button">Create Grid</button>
+
+<button id="find-path" class="primary" type="button">Find Path</button>
+
+</section>
+
+<section class="workspace">
+    <div>
+        <div class="section-heading"><h2>Warehouse Grid</h2><span>Click a cell to add or remove an obstacle</span></div>
+        <div id="grid" aria-label="Warehouse grid"></div>
+    </div>
+
+<section id="graph-panel" aria-live="polite">
+    <h2>Weighted Grid Graph</h2>
+    <p>Run an algorithm to generate and display random edge weights.</p>
+    <div id="graph"></div>
+</section>
+</section>
+
+
+<p id="status" role="status" aria-live="polite"></p>
+
+<section id="algorithm-log" aria-live="polite">
+    <h2>Algorithm Explanation Log</h2>
+    <p>Choose an algorithm and find a path to see its implementation steps.</p>
+</section>
+</main>
+
+
+<script src="script.js"></script>
+
+</body>
+</html>
