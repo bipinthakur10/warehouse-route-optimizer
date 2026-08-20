@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Warehouse Robot Route Optimization</title>
+    <title>Warehouse Route Graph</title>
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -11,12 +11,12 @@
 
 <header class="page-header">
     <p class="eyebrow">Pathfinding visualizer</p>
-    <h1>Warehouse Route Optimizer</h1>
-    <p>Set the warehouse dimensions, mark blocked cells, and compare route algorithms.</p>
+    <h1>Warehouse Route Graph</h1>
+    <p>Choose nodes directly on the graph, add destinations in visit order, and compare route algorithms.</p>
 </header>
 
 <main>
-<section class="controls" aria-label="Grid controls">
+<section class="controls" aria-label="Graph controls">
 
 <label>
 Rows:
@@ -39,23 +39,31 @@ Cols:
     <option value="Prim">Prim (MST)</option>
 </select>
 
+<label>
+Node action:
+<select id="node-action">
+    <option value="target">Add target</option>
+    <option value="start">Set start</option>
+    <option value="obstacle">Toggle blocked</option>
+</select>
+</label>
 
-<button id="create-grid" type="button">Create Grid</button>
+<button id="create-graph" type="button">Reset Graph</button>
 
-<button id="find-path" class="primary" type="button">Find Path</button>
+<button id="remove-target" type="button">Remove Last Target</button>
+
+<button id="find-path" class="primary" type="button">Find Routes</button>
 
 </section>
 
 <section class="workspace">
-    <div>
-        <div class="section-heading"><h2>Warehouse Grid</h2><span>Click a cell to add or remove an obstacle</span></div>
-        <div id="grid" aria-label="Warehouse grid"></div>
-    </div>
-
 <section id="graph-panel" aria-live="polite">
-    <h2>Weighted Grid Graph</h2>
-    <p>Run an algorithm to generate and display random edge weights.</p>
-    <div id="graph"></div>
+    <div class="section-heading">
+        <h2>Route Graph</h2>
+        <span>Choose an action, then click a node. Targets are visited in the order they are added.</span>
+    </div>
+    <div id="target-list" aria-live="polite"></div>
+    <div id="graph" aria-label="Interactive warehouse route graph"></div>
 </section>
 </section>
 

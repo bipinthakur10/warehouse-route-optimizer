@@ -4,7 +4,8 @@ A C++17 web application that finds a robot route through a warehouse grid. The b
 
 ## Features
 
-- Interactive grid with start, destination, and obstacle cells
+- Interactive route graph with start, ordered target, and blocked nodes
+- Up to eight targets in one request, visited in the order supplied
 - Route algorithms: BFS, DFS, A*, Dijkstra, and Floyd-Warshall
 - Minimum-spanning-tree algorithms: Kruskal and Prim
 - A mathematical explanation log for every selected algorithm
@@ -27,7 +28,7 @@ cmake --build build
 ./build/server
 ```
 
-The server listens on `http://127.0.0.1:8080` by default and serves the frontend itself. Open `http://127.0.0.1:8080` in a browser, create a grid, choose an algorithm, and click **Find Path**. No separate Python or frontend server is required.
+The server listens on `http://127.0.0.1:8080` by default and serves the frontend itself. Open `http://127.0.0.1:8080` in a browser, choose a node action, click graph nodes to set the start, targets, or blocks, choose an algorithm, and click **Find Routes**. No separate Python or frontend server is required.
 
 If port 8080 is occupied, stop the older server process before starting the new build:
 
@@ -44,7 +45,7 @@ Send a `POST` request to `http://127.0.0.1:8080/route`.
   "rows": 5,
   "cols": 5,
   "start": [0, 0],
-  "end": [4, 4],
+  "targets": [[0, 4], [4, 4]],
   "obstacles": [[1, 1], [2, 2]],
   "algorithm": "Dijkstra"
 }
@@ -68,6 +69,10 @@ Example response:
   "algorithm": "DIJKSTRA",
   "steps": 8,
   "path": [[0, 0], [0, 1], [0, 2]],
+  "targetPaths": [
+    [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]],
+    [[0, 4], [1, 4], [2, 4], [3, 4], [4, 4]]
+  ],
   "algorithmLog": [
     "Formula: candidateDistance = distance[current] + edgeWeight...",
     "Step 1: distance(0, 1) = distance(0, 0) + 1 = 0 + 1 = 1."
@@ -75,6 +80,8 @@ Example response:
   "message": "Path computed successfully."
 }
 ```
+
+`targets` accepts one to eight `[row, col]` coordinates. Each target becomes the start of the next leg. For compatibility, a request with the former single `end` field is still accepted.
 
 ## Important notes
 

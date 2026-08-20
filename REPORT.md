@@ -8,7 +8,7 @@ The project demonstrates route-search algorithms and minimum-spanning-tree (MST)
 
 ## 2. Objectives
 
-1. Find routes between a selected start cell and end cell while avoiding obstacles.
+1. Find routes from a selected start cell through one or more ordered target cells while avoiding obstacles.
 2. Compare graph algorithms on the same warehouse grid.
 3. Show the mathematical calculation behind each algorithm.
 4. Provide an API that a frontend or another application can use.
@@ -184,7 +184,8 @@ Request fields:
 | `rows` | integer | Number of grid rows; must be positive. |
 | `cols` | integer | Number of grid columns; must be positive. |
 | `start` | `[x, y]` | Starting cell. |
-| `end` | `[x, y]` | Destination cell. |
+| `targets` | `[[x, y], ...]` | One to eight destination cells, visited in order. |
+| `end` | `[x, y]` | Legacy single destination field; accepted when `targets` is omitted. |
 | `obstacles` | `[[x, y], ...]` | Cells the robot cannot enter. |
 | `algorithm` | string | Selected algorithm name. |
 
@@ -196,6 +197,7 @@ Successful response fields:
 | `algorithm` | Algorithm executed by the backend. |
 | `steps` | Number of moves in the returned route. |
 | `path` | Ordered list of `[x, y]` cells. |
+| `targetPaths` | A separate ordered path for each reached target. |
 | `algorithmLog` | Formula-based calculation log. |
 | `message` | Success or failure message. |
 

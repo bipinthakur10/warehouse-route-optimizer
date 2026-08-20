@@ -3,6 +3,7 @@
 // Ensure standard headers required by included algorithm headers are available
 #include <cctype>
 #include <cmath>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -23,7 +24,8 @@ std::string coordinate(const Cell &cell)
     return "(" + std::to_string(cell.x) + ", " + std::to_string(cell.y) + ")";
 }
 
-Json::Value createAlgorithmLog(const std::string &algorithm, const std::vector<Cell> &path)
+Json::Value createAlgorithmLog(const std::string &algorithm, const std::vector<Cell> &path,
+                               bool allTargetsReached = true)
 {
     Json::Value log(Json::arrayValue);
     const bool pathFound = !path.empty();
@@ -84,8 +86,10 @@ Json::Value createAlgorithmLog(const std::string &algorithm, const std::vector<C
         }
     }
 
-    if (pathFound)
-        log.append("Result: path found with " + std::to_string(pathSteps) + " moves.");
+    if (pathFound && allTargetsReached)
+        log.append("Result: route found with " + std::to_string(pathSteps) + " total moves.");
+    else if (pathFound)
+        log.append("Result: the route stopped before an unreachable target.");
     else
         log.append("Result: no route exists because obstacles block every connection to the target.");
     return log;
@@ -119,6 +123,26 @@ Json::Value graphAsJson(const WarehouseGrid &grid)
     }
     return graph;
 }
+
+bool readCell(const Json::Value &value, Cell &cell)
+{
+    if (!value.isArray() || value.size() != 2 || !value[0].isInt() || !value[1].isInt())
+        return false;
+    cell = {value[0].asInt(), value[1].asInt()};
+    return true;
+}
+
+Json::Value pathAsJson(const std::vector<Cell> &path)
+{
+    Json::Value jsonPath(Json::arrayValue);
+    for (const Cell &cell : path) {
+        Json::Value point(Json::arrayValue);
+        point.append(cell.x);
+        point.append(cell.y);
+        jsonPath.append(point);
+    }
+    return jsonPath;
+}
 } // namespace
 
 void RouteController::computeRoute(
@@ -145,7 +169,7 @@ void RouteController::computeRoute(
     // Required parameters
     // ==========================
     const std::vector<std::string> requiredFields = {
-        "rows", "cols", "start", "end", "obstacles"};
+        "rows", "cols", "start", "obstacles"};
 
     for (const auto &field : requiredFields)
     {
@@ -212,10 +236,75 @@ void RouteController::computeRoute(
     grid.randomizeWeights();
 
     // ==========================
-    // Start & Target
+    // Start & Targets
     // ==========================
-    Cell start{(*json)["start"][0].asInt(), (*json)["start"][1].asInt()};
-    Cell target{(*json)["end"][0].asInt(), (*json)["end"][1].asInt()};
+    Cell start;
+    if (!readCell((*json)["start"], start))
+    {
+        Json::Value error;
+        error["success"] = false;
+        error["message"] = "Start must be a coordinate pair [row, col].";
+        auto resp = drogon::HttpResponse::newHttpJsonResponse(error);
+        resp->setStatusCode(drogon::k400BadRequest);
+        callback(resp);
+        return;
+    }
+
+    std::vector<Cell> targets;
+    if (json->isMember("targets"))
+    {
+        const Json::Value &jsonTargets = (*json)["targets"];
+        if (!jsonTargets.isArray() || jsonTargets.empty() || jsonTargets.size() > 8)
+        {
+            Json::Value error;
+            error["success"] = false;
+            error["message"] = "Targets must contain between 1 and 8 coordinate pairs.";
+            auto resp = drogon::HttpResponse::newHttpJsonResponse(error);
+            resp->setStatusCode(drogon::k400BadRequest);
+            callback(resp);
+            return;
+        }
+        for (const Json::Value &jsonTarget : jsonTargets)
+        {
+            Cell target;
+            if (!readCell(jsonTarget, target))
+            {
+                Json::Value error;
+                error["success"] = false;
+                error["message"] = "Every target must be a coordinate pair [row, col].";
+                auto resp = drogon::HttpResponse::newHttpJsonResponse(error);
+                resp->setStatusCode(drogon::k400BadRequest);
+                callback(resp);
+                return;
+            }
+            targets.push_back(target);
+        }
+    }
+    else if (json->isMember("end"))
+    {
+        Cell target;
+        if (!readCell((*json)["end"], target))
+        {
+            Json::Value error;
+            error["success"] = false;
+            error["message"] = "End must be a coordinate pair [row, col].";
+            auto resp = drogon::HttpResponse::newHttpJsonResponse(error);
+            resp->setStatusCode(drogon::k400BadRequest);
+            callback(resp);
+            return;
+        }
+        targets.push_back(target);
+    }
+    else
+    {
+        Json::Value error;
+        error["success"] = false;
+        error["message"] = "Missing required field: targets.";
+        auto resp = drogon::HttpResponse::newHttpJsonResponse(error);
+        resp->setStatusCode(drogon::k400BadRequest);
+        callback(resp);
+        return;
+    }
 
     // Boundary checks
     if (!grid.isInside(start.x, start.y))
@@ -228,17 +317,6 @@ void RouteController::computeRoute(
         callback(resp);
         return;
     }
-    if (!grid.isInside(target.x, target.y))
-    {
-        Json::Value error;
-        error["success"] = false;
-        error["message"] = "Target position is outside the grid.";
-        auto resp = drogon::HttpResponse::newHttpJsonResponse(error);
-        resp->setStatusCode(drogon::k400BadRequest);
-        callback(resp);
-        return;
-    }
-
     // Occupancy checks
     if (!grid.isFree(start.x, start.y))
     {
@@ -250,15 +328,28 @@ void RouteController::computeRoute(
         callback(resp);
         return;
     }
-    if (!grid.isFree(target.x, target.y))
+    for (const Cell &target : targets)
     {
-        Json::Value error;
-        error["success"] = false;
-        error["message"] = "Invalid target position (occupied).";
-        auto resp = drogon::HttpResponse::newHttpJsonResponse(error);
-        resp->setStatusCode(drogon::k400BadRequest);
-        callback(resp);
-        return;
+        if (!grid.isInside(target.x, target.y))
+        {
+            Json::Value error;
+            error["success"] = false;
+            error["message"] = "Target position is outside the grid.";
+            auto resp = drogon::HttpResponse::newHttpJsonResponse(error);
+            resp->setStatusCode(drogon::k400BadRequest);
+            callback(resp);
+            return;
+        }
+        if (!grid.isFree(target.x, target.y))
+        {
+            Json::Value error;
+            error["success"] = false;
+            error["message"] = "Invalid target position (occupied).";
+            auto resp = drogon::HttpResponse::newHttpJsonResponse(error);
+            resp->setStatusCode(drogon::k400BadRequest);
+            callback(resp);
+            return;
+        }
     }
   
     // ==========================
@@ -274,65 +365,14 @@ void RouteController::computeRoute(
      algorithm.end(), 
      algorithm.begin(), 
      ::toupper);
-     
-      // Start and target are the same
-if (start.x == target.x && start.y == target.y)
-{
-    Json::Value result;
-
-    result["success"] = true;
-    result["algorithm"] = algorithm;
-    result["steps"] = 0;
-
-    Json::Value path(Json::arrayValue);
-    Json::Value point(Json::arrayValue);
-
-    point.append(start.x);
-    point.append(start.y);
-
-    path.append(point);
-
-    result["path"] = path;
-    result["graph"] = graphAsJson(grid);
-    result["message"] = "Start and target are the same.";
-    result["algorithmLog"] = createAlgorithmLog(algorithm, {start});
-
-    auto resp = drogon::HttpResponse::newHttpJsonResponse(result);
-    callback(resp);
-    return;
-}
-
-    std::vector<Cell> path;
-    if (algorithm == "BFS")
-    {
-        path = bfsPath(grid, start, target);
-    }
-    else if (algorithm == "A*")
-    {
-        path = astarPath(grid, start, target);
-    }
-    else if (algorithm == "DFS")
-    {
-        path = dfsPath(grid, start, target);
-    }
-    else if (algorithm == "DIJKSTRA")
-    {
-        path = dijkstraPath(grid, start, target);
-    }
-    else if (algorithm == "FLOYD-WARSHALL" || algorithm == "FLOYD_WARSHALL")
-    {
+    if (algorithm == "FLOYD_WARSHALL")
         algorithm = "FLOYD-WARSHALL";
-        path = floydWarshallPath(grid, start, target);
-    }
-    else if (algorithm == "KRUSKAL")
-    {
-        path = kruskalPath(grid, start, target);
-    }
-    else if (algorithm == "PRIM")
-    {
-        path = primPath(grid, start, target);
-    }
-    else
+
+    const bool supportedAlgorithm = algorithm == "BFS" || algorithm == "A*" ||
+                                  algorithm == "DFS" || algorithm == "DIJKSTRA" ||
+                                  algorithm == "FLOYD-WARSHALL" || algorithm == "KRUSKAL" ||
+                                  algorithm == "PRIM";
+    if (!supportedAlgorithm)
     {
         Json::Value error;
         error["success"] = false;
@@ -351,26 +391,63 @@ if (start.x == target.x && start.y == target.y)
         return;
     }
 
+    auto findLeg = [&](Cell from, Cell target) {
+        if (from.x == target.x && from.y == target.y)
+            return std::vector<Cell>{from};
+        if (algorithm == "BFS")
+            return bfsPath(grid, from, target);
+        if (algorithm == "A*")
+            return astarPath(grid, from, target);
+        if (algorithm == "DFS")
+            return dfsPath(grid, from, target);
+        if (algorithm == "DIJKSTRA")
+            return dijkstraPath(grid, from, target);
+        if (algorithm == "FLOYD-WARSHALL")
+            return floydWarshallPath(grid, from, target);
+        if (algorithm == "KRUSKAL")
+            return kruskalPath(grid, from, target);
+        return primPath(grid, from, target);
+    };
+
+    std::vector<Cell> path;
+    std::vector<std::vector<Cell>> targetPaths;
+    Cell current = start;
+    Cell unreachableTarget{-1, -1};
+    for (const Cell &target : targets)
+    {
+        std::vector<Cell> leg = findLeg(current, target);
+        if (leg.empty())
+        {
+            unreachableTarget = target;
+            break;
+        }
+        targetPaths.push_back(leg);
+        if (path.empty())
+            path = leg;
+        else
+            path.insert(path.end(), std::next(leg.begin()), leg.end());
+        current = target;
+    }
+
+    const bool allTargetsReached = unreachableTarget.x == -1;
+
     // ==========================
     // Response
     // ==========================
     Json::Value result;
-    result["success"] = !path.empty();
+    result["success"] = allTargetsReached;
     result["algorithm"] = algorithm;
     result["steps"] = path.empty() ? 0 : static_cast<int>(path.size()) - 1;
-
-    Json::Value jsonPath(Json::arrayValue);
-    for (const auto &cell : path)
-    {
-        Json::Value point(Json::arrayValue);
-        point.append(cell.x);
-        point.append(cell.y);
-        jsonPath.append(point);
-    }
-    result["path"] = jsonPath;
+    result["path"] = pathAsJson(path);
+    result["targets"] = pathAsJson(targets);
+    result["targetPaths"] = Json::arrayValue;
+    for (const std::vector<Cell> &targetPath : targetPaths)
+        result["targetPaths"].append(pathAsJson(targetPath));
     result["graph"] = graphAsJson(grid);
-    result["message"] = path.empty() ? "No path found." : "Path computed successfully.";
-    result["algorithmLog"] = createAlgorithmLog(algorithm, path);
+    result["message"] = allTargetsReached
+        ? "Routes computed successfully."
+        : "No route found to target " + coordinate(unreachableTarget) + ".";
+    result["algorithmLog"] = createAlgorithmLog(algorithm, path, allTargetsReached);
 
     auto resp = drogon::HttpResponse::newHttpJsonResponse(result);
     callback(resp);

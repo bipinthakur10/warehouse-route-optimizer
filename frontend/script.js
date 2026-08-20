@@ -1,281 +1,309 @@
 let rows = 10;
 let cols = 10;
-
-let start = [0,0];
-let end;
-
+let start = [0, 0];
+let targets = [];
 let obstacles = [];
+let currentGraph = null;
+let currentPaths = [];
 
+const MAX_TARGETS = 8;
 
-// =========================
-// Create Warehouse Grid
-// =========================
-function createGrid()
+function sameCell(left, right)
+{
+    return left[0] === right[0] && left[1] === right[1];
+}
+
+function cellId(cell)
+{
+    return `${cell[0]}-${cell[1]}`;
+}
+
+function isObstacle(cell)
+{
+    return obstacles.some(obstacle => sameCell(obstacle, cell));
+}
+
+function allCells()
+{
+    const cells = [];
+    for (let x = 0; x < rows; x++)
+    {
+        for (let y = 0; y < cols; y++)
+        {
+            cells.push([x, y]);
+        }
+    }
+    return cells;
+}
+
+function previewGraph()
+{
+    const graph = { nodes: allCells(), edges: [] };
+    for (let x = 0; x < rows; x++)
+    {
+        for (let y = 0; y < cols; y++)
+        {
+            const cell = [x, y];
+            if (isObstacle(cell))
+                continue;
+
+            for (const [nextX, nextY] of [[x + 1, y], [x, y + 1]])
+            {
+                const next = [nextX, nextY];
+                if (nextX < rows && nextY < cols && !isObstacle(next))
+                    graph.edges.push({ from: cell, to: next });
+            }
+        }
+    }
+    return graph;
+}
+
+function createGraph()
 {
     rows = Number(document.getElementById("rows").value);
     cols = Number(document.getElementById("cols").value);
 
     if (!Number.isInteger(rows) || !Number.isInteger(cols) || rows < 2 || cols < 2 || rows > 20 || cols > 20)
     {
-        setStatus("Use whole-number grid dimensions between 2 and 20.", "error");
+        setStatus("Use whole-number graph dimensions between 2 and 20.", "error");
         return;
     }
 
-    end = [rows - 1, cols - 1];
-
+    start = [0, 0];
+    targets = [[rows - 1, cols - 1]];
     obstacles = [];
-    clearPath();
-    document.getElementById("graph").innerHTML = "";
-    setStatus("Grid ready. Click cells to add obstacles.", "info");
-
-
-    let grid = document.getElementById("grid");
-
-    grid.innerHTML = "";
-
-
-    grid.style.gridTemplateColumns =
-        `repeat(${cols},40px)`;
-
-
-    for(let i = 0; i < rows; i++)
-    {
-        for(let j = 0; j < cols; j++)
-        {
-            let cell = document.createElement("div");
-
-            cell.className = "cell";
-
-            cell.id = `${i}-${j}`;
-
-
-            cell.onclick = function()
-            {
-                toggleObstacle(i,j);
-            };
-
-
-            grid.appendChild(cell);
-        }
-    }
-
-
-    updateCells();
+    currentPaths = [];
+    currentGraph = previewGraph();
+    drawGraph(currentGraph, currentPaths);
+    setStatus("Graph ready. Use Node action to set the start, targets, or blocked nodes.", "info");
 }
 
-
-
-// =========================
-// Add / Remove Obstacles
-// =========================
-function toggleObstacle(x,y)
+function updateTargetList()
 {
+    const list = document.getElementById("target-list");
+    const formattedTargets = targets.map((target, index) =>
+        `T${index + 1} (${target[0]}, ${target[1]})`).join(" → ");
+    list.innerHTML = `<strong>Start:</strong> (${start[0]}, ${start[1]}) &nbsp; <strong>Targets:</strong> ${formattedTargets || "None"}`;
+}
 
-    if(
-        (x === start[0] && y === start[1]) ||
-        (x === end[0] && y === end[1])
-    )
+function selectNode(cell)
+{
+    const action = document.getElementById("node-action").value;
+
+    if (action === "start")
     {
-        return;
+        if (isObstacle(cell))
+        {
+            setStatus("Unblock this node before making it the start.", "error");
+            return;
+        }
+        if (targets.some(target => sameCell(target, cell)))
+        {
+            setStatus("Remove this target before making it the start.", "error");
+            return;
+        }
+        start = cell;
+        setStatus(`Start set to (${cell[0]}, ${cell[1]}).`, "info");
     }
-
-
-    let index = obstacles.findIndex(
-        o => o[0] === x && o[1] === y
-    );
-
-
-    if(index >= 0)
+    else if (action === "target")
     {
-        obstacles.splice(index,1);
+        if (isObstacle(cell))
+        {
+            setStatus("Unblock this node before adding it as a target.", "error");
+            return;
+        }
+        if (sameCell(start, cell))
+        {
+            setStatus("The start node cannot also be a target.", "error");
+            return;
+        }
+        if (targets.some(target => sameCell(target, cell)))
+        {
+            setStatus("That node is already a target.", "info");
+            return;
+        }
+        if (targets.length === MAX_TARGETS)
+        {
+            setStatus(`A route can include up to ${MAX_TARGETS} targets.`, "error");
+            return;
+        }
+        targets.push(cell);
+        setStatus(`Added target ${targets.length} at (${cell[0]}, ${cell[1]}).`, "info");
     }
     else
     {
-        obstacles.push([x,y]);
+        if (sameCell(start, cell) || targets.some(target => sameCell(target, cell)))
+        {
+            setStatus("Move or remove the start/target before blocking this node.", "error");
+            return;
+        }
+        const obstacleIndex = obstacles.findIndex(obstacle => sameCell(obstacle, cell));
+        if (obstacleIndex === -1)
+        {
+            obstacles.push(cell);
+            setStatus(`Blocked node (${cell[0]}, ${cell[1]}).`, "info");
+        }
+        else
+        {
+            obstacles.splice(obstacleIndex, 1);
+            setStatus(`Unblocked node (${cell[0]}, ${cell[1]}).`, "info");
+        }
     }
 
-
-    updateCells();
+    currentPaths = [];
+    currentGraph = previewGraph();
+    drawGraph(currentGraph, currentPaths);
 }
 
-
-
-// =========================
-// Update Grid Colors
-// =========================
-function updateCells()
+function removeLastTarget()
 {
-
-    document.querySelectorAll(".cell")
-    .forEach(cell =>
+    if (targets.length === 0)
     {
-        cell.className = "cell";
+        setStatus("There are no targets to remove.", "info");
+        return;
+    }
+    const removed = targets.pop();
+    currentPaths = [];
+    currentGraph = previewGraph();
+    drawGraph(currentGraph, currentPaths);
+    setStatus(`Removed target (${removed[0]}, ${removed[1]}).`, "info");
+}
+
+function drawGraph(graph, paths)
+{
+    const container = document.getElementById("graph");
+    const edges = graph && Array.isArray(graph.edges) ? graph.edges : [];
+    const spacing = 72;
+    const padding = 42;
+    const width = Math.max(200, cols * spacing + padding * 2);
+    const height = Math.max(200, rows * spacing + padding * 2);
+    const routeEdges = new Set();
+
+    (paths || []).forEach(path =>
+    {
+        for (let index = 1; index < path.length; index++)
+            routeEdges.add([cellId(path[index - 1]), cellId(path[index])].sort().join("|"));
     });
 
+    const point = cell => ({ x: padding + cell[1] * spacing, y: padding + cell[0] * spacing });
+    let svg = `<svg class="graph-svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="Interactive weighted route graph">`;
 
-    document.getElementById(
-        `${start[0]}-${start[1]}`
-    ).classList.add("start");
-
-
-    document.getElementById(
-        `${end[0]}-${end[1]}`
-    ).classList.add("end");
-
-
-    obstacles.forEach(o =>
+    edges.forEach(edge =>
     {
-        let cell = document.getElementById(
-            `${o[0]}-${o[1]}`
-        );
-
-        if(cell)
+        const from = point(edge.from);
+        const to = point(edge.to);
+        const key = [cellId(edge.from), cellId(edge.to)].sort().join("|");
+        svg += `<line class="graph-edge${routeEdges.has(key) ? " route-edge" : ""}" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}"/>`;
+        if (Number.isFinite(edge.weight))
         {
-            cell.classList.add("obstacle");
+            const midX = (from.x + to.x) / 2;
+            const midY = (from.y + to.y) / 2;
+            svg += `<text class="graph-weight" x="${midX + 4}" y="${midY - 4}">${edge.weight}</text>`;
         }
     });
 
+    allCells().forEach(cell =>
+    {
+        const position = point(cell);
+        const targetIndex = targets.findIndex(target => sameCell(target, cell));
+        let nodeClass = "graph-node";
+        let labelClass = "graph-node-label";
+        let label = `${cell[0]},${cell[1]}`;
+
+        if (sameCell(start, cell))
+        {
+            nodeClass += " graph-start";
+            labelClass += " inverse";
+            label = "S";
+        }
+        else if (targetIndex >= 0)
+        {
+            nodeClass += ` graph-target ${targetIndex < 4 ? `graph-target-${targetIndex + 1}` : "graph-target-more"}`;
+            labelClass += " inverse";
+            label = `T${targetIndex + 1}`;
+        }
+        else if (isObstacle(cell))
+        {
+            nodeClass += " graph-obstacle";
+            labelClass += " inverse";
+            label = "×";
+        }
+
+        svg += `<g class="graph-node-group" data-x="${cell[0]}" data-y="${cell[1]}">`;
+        svg += `<circle class="${nodeClass}" cx="${position.x}" cy="${position.y}" r="17"/>`;
+        svg += `<text class="${labelClass}" text-anchor="middle" x="${position.x}" y="${position.y + 4}">${label}</text>`;
+        svg += "</g>";
+    });
+
+    container.innerHTML = `${svg}</svg>`;
+    updateTargetList();
 }
 
+function clearRoutes()
+{
+    currentPaths = [];
+    drawGraph(currentGraph || previewGraph(), currentPaths);
+}
 
-
-// =========================
-// Send Request to Drogon
-// =========================
 async function findPath()
 {
-    clearPath();
-    if (!Number.isInteger(rows) || !Number.isInteger(cols))
+    clearRoutes();
+    if (targets.length === 0)
     {
-        setStatus("Create a valid grid before finding a path.", "error");
+        setStatus("Add at least one target before finding routes.", "error");
         return;
     }
 
     const findButton = document.getElementById("find-path");
     findButton.disabled = true;
-    findButton.textContent = "Finding route...";
-    setStatus("Calculating route and random edge weights...", "info");
+    findButton.textContent = "Finding routes...";
+    setStatus("Calculating routes and random edge weights...", "info");
 
-
-    let algorithm =
-        document.getElementById("algorithm").value;
-
-
-    let data =
-    {
-        rows: rows,
-        cols: cols,
-        start: start,
-        end: end,
-        obstacles: obstacles,
-        algorithm: algorithm
+    const data = {
+        rows,
+        cols,
+        start,
+        targets,
+        obstacles,
+        algorithm: document.getElementById("algorithm").value
     };
-
 
     try
     {
-
-        let response = await fetch(
-            "/route",
-            {
-                method:"POST",
-
-                headers:
-                {
-                    "Content-Type":"application/json"
-                },
-
-                body: JSON.stringify(data)
-            }
-        );
-
-
+        const response = await fetch("/route", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data)
+        });
         const result = await response.json();
         if (!response.ok)
             throw new Error(result.message || "The server rejected this request.");
 
-        // The graph is useful even when no route can be found.
-        drawGraph(result.graph, result.path || []);
+        currentGraph = result.graph || previewGraph();
+        currentPaths = result.targetPaths || (result.path ? [result.path] : []);
+        drawGraph(currentGraph, currentPaths);
+        showAlgorithmLog(result.algorithmLog);
 
-
-
-        if(result.success)
+        if (result.success)
         {
-
-            drawPath(result.path);
-            setStatus(`${result.algorithm} path found in ${result.steps} steps.`, "success");
-            showAlgorithmLog(result.algorithmLog);
+            const targetWord = targets.length === 1 ? "target" : "targets";
+            setStatus(`${result.algorithm} route reaches ${targets.length} ${targetWord} in ${result.steps} total steps.`, "success");
         }
         else
         {
-
             setStatus(result.message || "No route was found.", "error");
-            showAlgorithmLog(result.algorithmLog);
-
         }
-
-
     }
-    catch(error)
+    catch (error)
     {
-
         console.error(error);
         setStatus(error.message || "Backend connection failed. Start the C++ server and try again.", "error");
     }
     finally
     {
         findButton.disabled = false;
-        findButton.textContent = "Find Path";
-
+        findButton.textContent = "Find Routes";
     }
-
-}
-
-// Draws the warehouse as a weighted graph: each free cell is a vertex and
-// each line is a traversable connection. Edge labels are generated randomly
-// by the backend for the current request.
-function drawGraph(graph, path)
-{
-    const container = document.getElementById("graph");
-    if (!graph || !graph.nodes)
-    {
-        container.innerHTML = "<p>No graph data is available.</p>";
-        return;
-    }
-
-    const spacing = 72;
-    const padding = 38;
-    const width = Math.max(160, cols * spacing + padding * 2);
-    const height = Math.max(160, rows * spacing + padding * 2);
-    const routeEdges = new Set();
-    for (let index = 1; path && index < path.length; index++)
-    {
-        const a = `${path[index - 1][0]}-${path[index - 1][1]}`;
-        const b = `${path[index][0]}-${path[index][1]}`;
-        routeEdges.add([a, b].sort().join("|"));
-    }
-    const point = cell => ({ x: padding + cell[1] * spacing, y: padding + cell[0] * spacing });
-    const nodeId = cell => `${cell[0]}-${cell[1]}`;
-    let svg = `<svg class="graph-svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="Weighted warehouse graph">`;
-
-    graph.edges.forEach(edge => {
-        const from = point(edge.from);
-        const to = point(edge.to);
-        const key = [nodeId(edge.from), nodeId(edge.to)].sort().join("|");
-        const midX = (from.x + to.x) / 2;
-        const midY = (from.y + to.y) / 2;
-        svg += `<line class="graph-edge${routeEdges.has(key) ? " route-edge" : ""}" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}"/>`;
-        svg += `<text class="graph-weight" x="${midX + 4}" y="${midY - 4}">${edge.weight}</text>`;
-    });
-    graph.nodes.forEach(cell => {
-        const position = point(cell);
-        let extra = "";
-        if (cell[0] === start[0] && cell[1] === start[1]) extra = " graph-start";
-        if (cell[0] === end[0] && cell[1] === end[1]) extra = " graph-end";
-        svg += `<circle class="graph-node${extra}" cx="${position.x}" cy="${position.y}" r="15"/>`;
-        svg += `<text class="graph-node-label" text-anchor="middle" x="${position.x}" y="${position.y + 4}">${cell[0]},${cell[1]}</text>`;
-    });
-    container.innerHTML = `${svg}</svg>`;
 }
 
 function showAlgorithmLog(log)
@@ -291,50 +319,6 @@ function showAlgorithmLog(log)
     panel.innerHTML = `<h2>Algorithm Explanation Log</h2><ol>${entries}</ol>`;
 }
 
-
-
-// =========================
-// Draw Path
-// =========================
-function drawPath(path)
-{
-
-    path.forEach(point =>
-    {
-
-        let id =
-        `${point[0]}-${point[1]}`;
-
-
-        let cell =
-        document.getElementById(id);
-
-
-        if(cell &&
-           id !== `${start[0]}-${start[1]}` &&
-           id !== `${end[0]}-${end[1]}`)
-        {
-            cell.classList.add("path");
-        }
-
-    });
-
-}
-
-// =========================
-// Remove Previous Path
-// =========================
-function clearPath()
-{
-
-    document.querySelectorAll(".path")
-    .forEach(cell =>
-    {
-        cell.classList.remove("path");
-    });
-
-}
-
 function setStatus(message, type)
 {
     const status = document.getElementById("status");
@@ -342,6 +326,15 @@ function setStatus(message, type)
     status.className = type;
 }
 
-document.getElementById("create-grid").addEventListener("click", createGrid);
+document.getElementById("create-graph").addEventListener("click", createGraph);
+document.getElementById("remove-target").addEventListener("click", removeLastTarget);
 document.getElementById("find-path").addEventListener("click", findPath);
-createGrid();
+document.getElementById("graph").addEventListener("click", event =>
+{
+    const node = event.target.closest(".graph-node-group");
+    if (!node)
+        return;
+    selectNode([Number(node.dataset.x), Number(node.dataset.y)]);
+});
+
+createGraph();
