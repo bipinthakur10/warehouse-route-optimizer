@@ -6,9 +6,10 @@ A C++17 web application that finds a robot route through a warehouse grid. The b
 
 - Interactive route graph with start, ordered target, and blocked nodes
 - Up to eight targets in one request, visited in the order supplied
-- Route algorithms: BFS, DFS, A*, Dijkstra, and Floyd-Warshall
-- Minimum-spanning-tree algorithms: Kruskal and Prim
-- A mathematical explanation log for every selected algorithm
+- Animated point-by-point route simulation with replay and speed controls
+- Algorithms: A*, Dijkstra, and Floyd-Warshall
+- One shared-graph comparison table with route status, moves, and weighted cost
+- A mathematical explanation log for the selected algorithm
 - JSON API at `POST /route`
 
 ## Requirements
@@ -28,7 +29,7 @@ cmake --build build
 ./build/server
 ```
 
-The server listens on `http://127.0.0.1:8080` by default and serves the frontend itself. Open `http://127.0.0.1:8080` in a browser, choose a node action, click graph nodes to set the start, targets, or blocks, choose an algorithm, and click **Find Routes**. No separate Python or frontend server is required.
+The server listens on `http://127.0.0.1:8080` by default and serves the frontend itself. Open `http://127.0.0.1:8080` in a browser, choose a node action, click graph nodes to set the start, targets, or blocks, choose an algorithm, and click **Find Routes**. The graph then shows the selected route and a comparison table for all three algorithms using the same edge weights. No separate Python or frontend server is required.
 
 If port 8080 is occupied, stop the older server process before starting the new build:
 
@@ -53,13 +54,9 @@ Send a `POST` request to `http://127.0.0.1:8080/route`.
 
 Supported values for `algorithm` are:
 
-- `BFS`
-- `DFS`
 - `A*`
 - `Dijkstra`
 - `Floyd-Warshall`
-- `Kruskal`
-- `Prim`
 
 Example response:
 
@@ -68,10 +65,16 @@ Example response:
   "success": true,
   "algorithm": "DIJKSTRA",
   "steps": 8,
+  "cost": 23,
   "path": [[0, 0], [0, 1], [0, 2]],
   "targetPaths": [
     [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]],
     [[0, 4], [1, 4], [2, 4], [3, 4], [4, 4]]
+  ],
+  "comparisons": [
+    {"algorithm": "A*", "success": true, "steps": 8, "cost": 23},
+    {"algorithm": "DIJKSTRA", "success": true, "steps": 8, "cost": 23},
+    {"algorithm": "FLOYD-WARSHALL", "success": true, "steps": 8, "cost": 23}
   ],
   "algorithmLog": [
     "Formula: candidateDistance = distance[current] + edgeWeight...",
@@ -85,11 +88,9 @@ Example response:
 
 ## Important notes
 
-- BFS and Dijkstra give a shortest route on this unit-weight grid.
-- A* gives a shortest route using Manhattan distance as its heuristic.
-- DFS finds a valid route but does not guarantee the shortest one.
-- Floyd-Warshall calculates all-pairs shortest paths and is best for small grids because its running time is `O(V^3)`.
-- Kruskal and Prim build a minimum spanning tree of the free cells. The displayed route is the unique path inside that tree, so it is not necessarily the shortest start-to-end route.
+- A*, Dijkstra, and Floyd-Warshall find a minimum-cost route on the positive-weight graph.
+- Every comparison result is calculated from the same graph and edge weights in a single API request.
+- Floyd-Warshall calculates all-pairs shortest paths and is best for small graphs because its running time is `O(V^3)`.
 
 See [REPORT.md](REPORT.md) for the complete project documentation.
 See [CODE_FLOW.md](CODE_FLOW.md) for the application execution flow.

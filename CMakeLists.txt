@@ -11,12 +11,8 @@ add_executable(server
    controllers/RouteController.cpp
    controllers/WarehouseController.cpp
    graph/warehousegrid.cpp
-   algorithm/bfs.cpp
    algorithm/astar.cpp
-   algorithm/dfs.cpp
    algorithm/grid_shortest_paths.cpp
-   algorithm/grid_spanning_tree.cpp
-   algorithm/minimum_spanning_tree.cpp
 )
 
 target_include_directories(server PRIVATE /usr/include/jsoncpp)

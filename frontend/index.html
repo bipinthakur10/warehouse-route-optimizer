@@ -30,13 +30,9 @@ Cols:
 
 
 <select id="algorithm">
-    <option value="BFS">BFS</option>
-    <option value="DFS">DFS</option>
     <option value="A*">A*</option>
     <option value="Dijkstra">Dijkstra</option>
     <option value="Floyd-Warshall">Floyd-Warshall</option>
-    <option value="Kruskal">Kruskal (MST)</option>
-    <option value="Prim">Prim (MST)</option>
 </select>
 
 <label>
@@ -54,6 +50,13 @@ Node action:
 
 <button id="find-path" class="primary" type="button">Find Routes</button>
 
+<label>
+Simulation speed:
+<input id="simulation-speed" type="range" min="1" max="5" value="3" aria-label="Simulation speed">
+</label>
+
+<button id="simulate-route" type="button" disabled>Replay Simulation</button>
+
 </section>
 
 <section class="workspace">
@@ -64,6 +67,20 @@ Node action:
     </div>
     <div id="target-list" aria-live="polite"></div>
     <div id="graph" aria-label="Interactive warehouse route graph"></div>
+    <section id="comparison-panel" aria-live="polite">
+        <h3>Algorithm Comparison</h3>
+        <p>Each result uses the same graph and the same edge weights.</p>
+        <div class="comparison-table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Algorithm</th><th>Status</th><th>Moves</th><th>Cost</th></tr>
+                </thead>
+                <tbody id="comparison-results">
+                    <tr><td colspan="4">Find routes to compare the algorithms.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
 </section>
 </section>
 
@@ -72,7 +89,7 @@ Node action:
 
 <section id="algorithm-log" aria-live="polite">
     <h2>Algorithm Explanation Log</h2>
-    <p>Choose an algorithm and find a path to see its implementation steps.</p>
+    <p>Choose an algorithm and find routes to see its implementation steps and an animated route simulation.</p>
 </section>
 </main>
 

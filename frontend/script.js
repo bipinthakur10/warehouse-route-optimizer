@@ -5,8 +5,13 @@ let targets = [];
 let obstacles = [];
 let currentGraph = null;
 let currentPaths = [];
+let currentRoute = [];
+let currentComparisons = [];
+let simulationRun = 0;
 
 const MAX_TARGETS = 8;
+const GRAPH_SPACING = 72;
+const GRAPH_PADDING = 42;
 
 function sameCell(left, right)
 {
@@ -16,6 +21,14 @@ function sameCell(left, right)
 function cellId(cell)
 {
     return `${cell[0]}-${cell[1]}`;
+}
+
+function pointForCell(cell)
+{
+    return {
+        x: GRAPH_PADDING + cell[1] * GRAPH_SPACING,
+        y: GRAPH_PADDING + cell[0] * GRAPH_SPACING
+    };
 }
 
 function isObstacle(cell)
@@ -72,7 +85,10 @@ function createGraph()
     start = [0, 0];
     targets = [[rows - 1, cols - 1]];
     obstacles = [];
+    stopSimulation();
+    currentRoute = [];
     currentPaths = [];
+    clearComparison();
     currentGraph = previewGraph();
     drawGraph(currentGraph, currentPaths);
     setStatus("Graph ready. Use Node action to set the start, targets, or blocked nodes.", "info");
@@ -150,7 +166,10 @@ function selectNode(cell)
         }
     }
 
+    stopSimulation();
+    currentRoute = [];
     currentPaths = [];
+    clearComparison();
     currentGraph = previewGraph();
     drawGraph(currentGraph, currentPaths);
 }
@@ -163,7 +182,10 @@ function removeLastTarget()
         return;
     }
     const removed = targets.pop();
+    stopSimulation();
+    currentRoute = [];
     currentPaths = [];
+    clearComparison();
     currentGraph = previewGraph();
     drawGraph(currentGraph, currentPaths);
     setStatus(`Removed target (${removed[0]}, ${removed[1]}).`, "info");
@@ -173,10 +195,8 @@ function drawGraph(graph, paths)
 {
     const container = document.getElementById("graph");
     const edges = graph && Array.isArray(graph.edges) ? graph.edges : [];
-    const spacing = 72;
-    const padding = 42;
-    const width = Math.max(200, cols * spacing + padding * 2);
-    const height = Math.max(200, rows * spacing + padding * 2);
+    const width = Math.max(200, cols * GRAPH_SPACING + GRAPH_PADDING * 2);
+    const height = Math.max(200, rows * GRAPH_SPACING + GRAPH_PADDING * 2);
     const routeEdges = new Set();
 
     (paths || []).forEach(path =>
@@ -185,13 +205,12 @@ function drawGraph(graph, paths)
             routeEdges.add([cellId(path[index - 1]), cellId(path[index])].sort().join("|"));
     });
 
-    const point = cell => ({ x: padding + cell[1] * spacing, y: padding + cell[0] * spacing });
     let svg = `<svg class="graph-svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="Interactive weighted route graph">`;
 
     edges.forEach(edge =>
     {
-        const from = point(edge.from);
-        const to = point(edge.to);
+        const from = pointForCell(edge.from);
+        const to = pointForCell(edge.to);
         const key = [cellId(edge.from), cellId(edge.to)].sort().join("|");
         svg += `<line class="graph-edge${routeEdges.has(key) ? " route-edge" : ""}" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}"/>`;
         if (Number.isFinite(edge.weight))
@@ -204,7 +223,7 @@ function drawGraph(graph, paths)
 
     allCells().forEach(cell =>
     {
-        const position = point(cell);
+        const position = pointForCell(cell);
         const targetIndex = targets.findIndex(target => sameCell(target, cell));
         let nodeClass = "graph-node";
         let labelClass = "graph-node-label";
@@ -237,11 +256,15 @@ function drawGraph(graph, paths)
 
     container.innerHTML = `${svg}</svg>`;
     updateTargetList();
+    updateSimulationButton();
 }
 
 function clearRoutes()
 {
+    stopSimulation();
+    currentRoute = [];
     currentPaths = [];
+    clearComparison();
     drawGraph(currentGraph || previewGraph(), currentPaths);
 }
 
@@ -281,13 +304,16 @@ async function findPath()
 
         currentGraph = result.graph || previewGraph();
         currentPaths = result.targetPaths || (result.path ? [result.path] : []);
+        currentRoute = result.success && Array.isArray(result.path) ? result.path : [];
         drawGraph(currentGraph, currentPaths);
+        showComparison(result.comparisons, result.algorithm);
         showAlgorithmLog(result.algorithmLog);
 
         if (result.success)
         {
             const targetWord = targets.length === 1 ? "target" : "targets";
             setStatus(`${result.algorithm} route reaches ${targets.length} ${targetWord} in ${result.steps} total steps.`, "success");
+            simulateRoute();
         }
         else
         {
@@ -304,6 +330,117 @@ async function findPath()
         findButton.disabled = false;
         findButton.textContent = "Find Routes";
     }
+}
+
+function displayAlgorithm(algorithm)
+{
+    if (algorithm === "DIJKSTRA")
+        return "Dijkstra";
+    if (algorithm === "FLOYD-WARSHALL")
+        return "Floyd–Warshall";
+    return algorithm;
+}
+
+function clearComparison()
+{
+    currentComparisons = [];
+    document.getElementById("comparison-results").innerHTML =
+        '<tr><td colspan="4">Find routes to compare the algorithms.</td></tr>';
+}
+
+function showComparison(comparisons, selectedAlgorithm)
+{
+    currentComparisons = Array.isArray(comparisons) ? comparisons : [];
+    const table = document.getElementById("comparison-results");
+    if (currentComparisons.length === 0)
+    {
+        clearComparison();
+        return;
+    }
+
+    table.innerHTML = currentComparisons.map(comparison =>
+    {
+        const success = Boolean(comparison.success);
+        const status = success ? "Route found" : "No route";
+        const cost = success && Number.isFinite(comparison.cost) ? comparison.cost : "—";
+        const selected = comparison.algorithm === selectedAlgorithm ? " selected-comparison" : "";
+        return `<tr class="${selected}"><td>${displayAlgorithm(comparison.algorithm)}</td>` +
+            `<td class="${success ? "comparison-success" : "comparison-failure"}">${status}</td>` +
+            `<td>${success ? comparison.steps : "—"}</td><td>${cost}</td></tr>`;
+    }).join("");
+}
+
+function simulationDelay()
+{
+    const speed = Number(document.getElementById("simulation-speed").value);
+    return 1100 - speed * 170;
+}
+
+function updateSimulationButton()
+{
+    document.getElementById("simulate-route").disabled = currentRoute.length === 0;
+}
+
+function stopSimulation()
+{
+    simulationRun += 1;
+    document.querySelectorAll(".route-marker").forEach(marker => marker.remove());
+}
+
+function waitFor(milliseconds)
+{
+    return new Promise(resolve => window.setTimeout(resolve, milliseconds));
+}
+
+async function simulateRoute()
+{
+    if (currentRoute.length === 0)
+    {
+        setStatus("Find a route before starting the simulation.", "error");
+        return;
+    }
+
+    stopSimulation();
+    const run = simulationRun;
+    const svg = document.querySelector("#graph .graph-svg");
+    if (!svg)
+        return;
+
+    const marker = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    const firstPosition = pointForCell(currentRoute[0]);
+    marker.setAttribute("class", "route-marker");
+    marker.setAttribute("cx", "0");
+    marker.setAttribute("cy", "0");
+    marker.setAttribute("r", "11");
+    marker.style.transform = `translate(${firstPosition.x}px, ${firstPosition.y}px)`;
+    marker.style.setProperty("--simulation-duration", `${Math.max(120, simulationDelay() - 100)}ms`);
+    svg.appendChild(marker);
+
+    if (currentRoute.length === 1)
+    {
+        setStatus("Simulation complete: the route is already at the target.", "success");
+        return;
+    }
+
+    setStatus(`Simulation started at (${currentRoute[0][0]}, ${currentRoute[0][1]}).`, "info");
+    await waitFor(120);
+
+    for (let index = 1; index < currentRoute.length; index++)
+    {
+        if (run !== simulationRun)
+            return;
+
+        const cell = currentRoute[index];
+        const position = pointForCell(cell);
+        marker.style.transform = `translate(${position.x}px, ${position.y}px)`;
+        const targetIndex = targets.findIndex(target => sameCell(target, cell));
+        const targetMessage = targetIndex >= 0 ? ` Reached target T${targetIndex + 1}.` : "";
+        setStatus(`Simulation step ${index} of ${currentRoute.length - 1}: moving to (${cell[0]}, ${cell[1]}).${targetMessage}`, "info");
+        await waitFor(simulationDelay());
+    }
+
+    if (run === simulationRun)
+        setStatus(`Simulation complete: visited ${targets.length} target${targets.length === 1 ? "" : "s"}.`, "success");
 }
 
 function showAlgorithmLog(log)
@@ -329,6 +466,7 @@ function setStatus(message, type)
 document.getElementById("create-graph").addEventListener("click", createGraph);
 document.getElementById("remove-target").addEventListener("click", removeLastTarget);
 document.getElementById("find-path").addEventListener("click", findPath);
+document.getElementById("simulate-route").addEventListener("click", simulateRoute);
 document.getElementById("graph").addEventListener("click", event =>
 {
     const node = event.target.closest(".graph-node-group");
